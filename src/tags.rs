@@ -283,22 +283,11 @@ pub enum CompressionMethod(u16) unknown(
 
     // Self-assigned by libtiff
     WebP = 0xC351,
-
-    // Self-assigned by libtiff/SGI
-    // A packbit like scheme on specific 32-bit samples (16 sint luma, 8 sint u,v). Only really
-    // compatible with PhotometricInterpretation CIELogLuv.
-    SgiLog = 34676,
-    // A packbit like scheme on specific 24-bit samples (10 packed bits luma, 14-bit uv index).
-    // Only really compatible with PhotometricInterpretation CIELogLuv.
-    SgiLog24 = 34677,
 }
 }
 
 tags! {
-pub enum PhotometricInterpretation(u16) unknown(
-    /// A private or extension tag
-    unknown
-) {
+pub enum PhotometricInterpretation(u16) {
     WhiteIsZero = 0,
     BlackIsZero = 1,
     RGB = 2,
@@ -306,41 +295,9 @@ pub enum PhotometricInterpretation(u16) unknown(
     TransparencyMask = 4,
     CMYK = 5,
     YCbCr = 6,
-    /// Biased Lab with all coefficients stored as unsigned integers.
     CIELab = 8,
     IccLab = 9,
     ItuLab = 10,
-    /// Logarithmic L* color space,
-    ///
-    /// see: <https://web.archive.org/web/20250121120358/https://www.anyhere.com/gward/pixformat/tiffluv.html>
-    /// References: <https://doi.org/10.2352/CIC.1998.6.1.art00046>
-    ///
-    /// The `uv` coordinates are based on:
-    ///
-    /// ```text
-    /// (6*u - 16*v + 12) * (-2x + 12y + 3) = 36
-    ///
-    /// u' = 4x / ( -2x + 12y + 3 )
-    /// v' = 9y / ( -2x + 12y + 3 )
-    /// x = 9u' / (6u' - 16v' + 12)
-    /// y = 4v' / (6u' - 16v' + 12)
-    /// ```
-    ///
-    /// Since `(-2x + 12y + 3) <= 15` it holds `(6u' - 16v' + 12) >= 36/15` for all XYZ colors
-    /// which makes the back transform to `xyY` well-defined. Also `v' <= 9/15 = 0.6` and also
-    /// by practical means `u' <= 2/3`.
-    ///
-    /// The compression format that is supposed to be used with this constrains them as well. It
-    /// encodes each component as a 16-bit unsigned integer scaled and clamped to a quantization
-    /// using 256 out of 410 levels or an index into a table based on a quantization to 177 levels
-    /// each `0.0035` (~1/286) wide and 163 levels of `v` (same quantization width).
-    ///
-    /// > Larson, G.W., ``Overcoming Gamut and Dynamic Range Limitations in Digital Images,'' Proceedings of the Sixth Color Imaging Conference, November 1998.
-    CIELogL = 32844,
-    /// Logarithmic L*u'v' color space,
-    ///
-    /// See references under [`Self::CIELogL`].
-    CIELogLuv = 32845,
 }
 }
 
@@ -360,9 +317,7 @@ pub enum Predictor(u16) {
     /// This means that instead of having in order `[r1, g1. b1, r2, g2 ...]` you will find
     /// `[r1, g1, b1, r2-r1, g2-g1, b2-b1, r3-r2, g3-g2, ...]`
     Horizontal = 2,
-    /// Floating-point predictor for IEEE floating-point sample types.
-    ///
-    /// This predictor byte-shuffles the data and applies byte-level horizontal differencing.
+    /// Not currently supported
     FloatingPoint = 3,
 }
 }
@@ -429,66 +384,13 @@ impl ValueBuffer {
     }
 
     /// Create a value with native byte order from in-memory data.
-    ///
-    /// This is equivalent to calling [`Self::set_value`] on a newly created buffer.
-    ///
-    /// # Example
-    ///
-    /// Create a buffer representing a particular tag's value:
-    ///
-    /// ```
-    /// use tiff::tags::{ByteOrder, CompressionMethod, ValueBuffer};
-    ///
-    /// // A buffer with initial content, for instance a tag's value.
-    /// let buffer = ValueBuffer::from_value(&CompressionMethod::ModernJPEG);
-    /// assert_eq!(buffer.as_bytes().len(), 2);
-    ///
-    /// // Note that depends on host endianess which of these holds:
-    /// assert!(buffer.as_bytes() == [0, 7] || buffer.as_bytes() == [7, 0]);
-    /// ```
-    pub fn from_value<T: TiffValue + ?Sized>(value: &T) -> Self {
+    pub fn from_value<T: TiffValue>(value: &T) -> Self {
         ValueBuffer {
             bytes: value.data().into_owned(),
             ty: <T as TiffValue>::FIELD_TYPE,
             count: value.count() as u64,
             byte_order: ByteOrder::native(),
         }
-    }
-
-    /// Set the buffer to the defined value.
-    ///
-    /// The previous data is erased. This converts the value's representation to the byte order of
-    /// the buffer in the process (which is a no-op if the buffer uses host byte order).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use tiff::tags::{ByteOrder, CompressionMethod, ValueBuffer};
-    ///
-    /// // A buffer with initial content, for instance a tag's value.
-    /// let mut buffer = ValueBuffer::from_value(&CompressionMethod::JPEG);
-    /// assert_eq!(buffer.as_bytes().len(), 2);
-    ///
-    /// // Ensure a host-independent byte order for the following representation.
-    /// buffer.set_byte_order(ByteOrder::LittleEndian);
-    /// // slices and arrays of primitives are a possible `TiffValue`
-    /// buffer.set_value(&[0, 1, 42u16]);
-    ///
-    /// // The little endian representation of these numbers (2 bytes each)
-    /// assert_eq!(buffer.as_bytes(), [0, 0, 1, 0, 42, 0]);
-    /// ```
-    pub fn set_value<T: TiffValue + ?Sized>(&mut self, value: &T) {
-        self.bytes.clear();
-
-        match value.data() {
-            std::borrow::Cow::Borrowed(slice) => self.bytes.extend_from_slice(slice),
-            std::borrow::Cow::Owned(ref mut data) => self.bytes.append(data),
-        }
-
-        self.ty = <T as TiffValue>::FIELD_TYPE;
-        self.count = value.count() as u64;
-
-        ByteOrder::native().convert(self.ty, &mut self.bytes, self.byte_order);
     }
 
     pub fn byte_order(&self) -> ByteOrder {
@@ -570,13 +472,6 @@ impl ValueBuffer {
     }
 }
 
-/// Create an empty value buffer with `Byte` type. This type choice is arbitrary.
-impl Default for ValueBuffer {
-    fn default() -> Self {
-        ValueBuffer::empty(Type::BYTE)
-    }
-}
-
 /// Byte order of the TIFF file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ByteOrder {
@@ -651,13 +546,4 @@ pub(crate) enum EndianBytes {
     Two,
     Four,
     Eight,
-}
-
-/// Defines how directories are laid out in the file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TiffVariant {
-    /// TIFF-V6.0 with 32-bit offsets and counts.
-    Standard,
-    /// Extended TIFF with 64-bit offsets and counts and long directories.
-    BigTiff,
 }

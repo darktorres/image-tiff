@@ -11,7 +11,7 @@ use std::collections::HashMap;
 ///
 /// Since we only consider one child, we run union find to assign each pointer to a known chain.
 /// Then, when we insert a new edge we check if they belong to the same component.
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct IfdCycles {
     /// The root of each component union.
     component_union: HashMap<ComponentId, ComponentId>,
@@ -23,8 +23,25 @@ pub struct IfdCycles {
 struct ComponentId(u64);
 
 impl IfdCycles {
+    // photo-gallery: for the tests only; decoders take theirs from `decoder::Scratch`.
+    #[cfg(test)]
     pub fn new() -> Self {
         IfdCycles::default()
+    }
+
+    /// photo-gallery: as `new` makes it, its maps freed if their tables hold more than `bytes`.
+    pub fn trim(&mut self, bytes: usize) {
+        let entries = self.component_union.capacity() + self.links.capacity() + self.chains.capacity();
+        if entries.saturating_mul(2 * core::mem::size_of::<u64>()) > bytes {
+            *self = IfdCycles::default();
+        }
+    }
+
+    /// photo-gallery: as `new` makes it, its maps' tables kept (`decoder::Scratch`).
+    pub fn clear(&mut self) {
+        self.component_union.clear();
+        self.links.clear();
+        self.chains.clear();
     }
 
     pub fn insert_next(

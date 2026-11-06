@@ -13,8 +13,7 @@ fn test_directory<F: Fn(File) -> bool>(path: &str, f: F) {
 }
 
 fn decode_tiff(file: File) -> TiffResult<()> {
-    let mut decoder = Decoder::open(file)?;
-    decoder.next_image()?;
+    let mut decoder = Decoder::new(file)?;
     decoder.read_image()?;
     Ok(())
 }

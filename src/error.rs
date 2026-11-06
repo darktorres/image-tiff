@@ -70,9 +70,6 @@ quick_error! {
         InconsistentSizesEncountered {
             display("inconsistent sizes encountered")
         }
-        IncorrectChunkCount {expected: u32, found: u32} {
-            display("incorrect number of chunk offsets encoded for the tile count of the image, expected {expected} but found {found}")
-        }
         InvalidDimensions(width: u32, height: u32) {
             display("invalid dimensions: {width}x{height}")
         }

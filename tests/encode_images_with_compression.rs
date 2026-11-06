@@ -2,9 +2,10 @@ extern crate tiff;
 
 use std::io::{Cursor, Seek, Write};
 use tiff::{
-    decoder::{Decoder, DecodingSampleBuffer},
+    decoder::{Decoder, DecodingResult},
     encoder::{
         colortype::{self, ColorType},
+        compression::*,
         Compression, TiffEncoder, TiffValue,
     },
 };
@@ -109,13 +110,12 @@ fn encode_decode_with_compression(compression: Compression) {
     // Decode tiff
     data.set_position(0);
     {
-        let mut decoder = Decoder::open(data).unwrap();
-        decoder.next_image().unwrap();
+        let mut decoder = Decoder::new(data).unwrap();
 
         // Check the RGB image
         assert_eq!(
             match decoder.read_image() {
-                Ok(DecodingSampleBuffer::U16(image_data)) => image_data,
+                Ok(DecodingResult::U16(image_data)) => image_data,
                 unexpected => panic!("Descoding RGB failed: {unexpected:?}"),
             },
             image_rgb.reference_data()
@@ -125,7 +125,7 @@ fn encode_decode_with_compression(compression: Compression) {
         decoder.next_image().unwrap();
         assert_eq!(
             match decoder.read_image() {
-                Ok(DecodingSampleBuffer::U8(image_data)) => image_data,
+                Ok(DecodingResult::U8(image_data)) => image_data,
                 unexpected => panic!("Decoding grayscale failed: {unexpected:?}"),
             },
             image_grayscale.reference_data()
@@ -147,9 +147,9 @@ fn encode_decode_with_lzw() {
 #[test]
 #[cfg(feature = "deflate")]
 fn encode_decode_with_deflate() {
-    encode_decode_with_compression(Compression::Deflate(1));
-    encode_decode_with_compression(Compression::Deflate(6));
-    encode_decode_with_compression(Compression::Deflate(9));
+    encode_decode_with_compression(Compression::Deflate(DeflateLevel::Fast));
+    encode_decode_with_compression(Compression::Deflate(DeflateLevel::Balanced));
+    encode_decode_with_compression(Compression::Deflate(DeflateLevel::Best));
 }
 
 #[test]

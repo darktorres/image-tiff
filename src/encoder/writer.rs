@@ -172,7 +172,7 @@ impl<W: Write> TiffWriter<W> {
     }
 
     pub fn pad_word_boundary(&mut self) -> Result<(), io::Error> {
-        if !self.offset.is_multiple_of(4) {
+        if self.offset % 4 != 0 {
             let padding = [0, 0, 0];
             let padd_len = 4 - (self.offset % 4);
             self.writer.write_all(&padding[..padd_len as usize])?;
@@ -221,7 +221,7 @@ fn encoder_on_short_writes() {
     };
 
     let imgdata = vec![42u8; 100 * 100];
-    let mut data = crate::decoder::DecodingSampleBuffer::U8(vec![]);
+    let mut data = crate::decoder::DecodingResult::U8(vec![]);
 
     for comp in [
         super::Compression::Uncompressed,
@@ -241,13 +241,11 @@ fn encoder_on_short_writes() {
         }
 
         write.inner.set_position(0);
-
-        let mut tiff_reader = crate::decoder::Decoder::open(&mut write.inner).unwrap();
-        tiff_reader.next_image().unwrap();
+        let mut tiff_reader = crate::decoder::Decoder::new(&mut write.inner).unwrap();
         let _layout = tiff_reader.read_image_to_buffer(&mut data).unwrap();
 
         assert!(
-            matches!(&data, crate::decoder::DecodingSampleBuffer::U8(v) if *v == imgdata),
+            matches!(&data, crate::decoder::DecodingResult::U8(v) if *v == imgdata),
             "{data:?} @ {}",
             data.as_buffer(0).byte_len()
         );

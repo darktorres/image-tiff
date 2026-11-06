@@ -33,31 +33,21 @@ use self::writer::*;
 /// Image data can be very unpredictable, and thus very hard to compress. Predictors are simple
 /// passes ran over the image data to prepare it for compression. This is mostly used for LZW
 /// compression, where using [Predictor::Horizontal] we see a 35% improvement in compression
-/// ratio over the unpredicted compression!
+/// ratio over the unpredicted compression !
 ///
-/// [Predictor::Horizontal] is for integer sample types.
-/// [Predictor::FloatingPoint] is for floating-point sample types (f32, f64).
+/// [Predictor::FloatingPoint] is currently not supported.
 pub type Predictor = crate::tags::Predictor;
+#[cfg(feature = "deflate")]
+pub type DeflateLevel = compression::DeflateLevel;
 
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, PartialEq, Default)]
 pub enum Compression {
-    /// No compression whatsoever. Fastest but produces large files.
     #[default]
     Uncompressed,
-    /// Legacy [LZW](https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch) algorithm. Not recommended, use DEFLATE instead.
     #[cfg(feature = "lzw")]
     Lzw,
-    /// [DEFLATE](https://en.wikipedia.org/wiki/DEFLATE) algorithm with the specified compression level.
-    ///
-    /// The valid levels are 1 through 9 inclusive. The default level is 6.
-    ///
-    /// - `1` stands for light but fast compression
-    /// - `6` is the recommended balanced default
-    /// - `9` is maximum compression ratio at the cost of slow encoding
     #[cfg(feature = "deflate")]
-    Deflate(u8),
-    /// [PackBits](https://en.wikipedia.org/wiki/PackBits) compression, a variant of RLE compression scheme. Fast, primitive compression with a poor compression ratio.
+    Deflate(DeflateLevel),
     Packbits,
 }
 
@@ -163,15 +153,7 @@ impl<W: Write + Seek, K: TiffKind> TiffEncoder<W, K> {
     /// Set the predictor to use
     ///
     /// A predictor is used to simplify the file before writing it. This is very
-    /// useful when writing a file compressed using LZW or DEFLATE as it can improve compression ratio
-    ///
-    /// The floating-point predictor is not universally supported. While most software can handle it,
-    /// Safari, Mac OS Preview and ImageJ Java library cannot. Don't use a predictor for float data
-    /// for maximum compatibility at the cost of compression ratio.
-    ///
-    /// The chosen predictor should match the data type being encoded.
-    /// Encoding floating-point data with `Predictor::Horizontal` is technically possible,
-    /// but rarely beneficial, and some decoders may reject such files.
+    /// useful when writing a file compressed using LZW as it can improve efficiency
     pub fn with_predictor(mut self, predictor: Predictor) -> Self {
         self.predictor = predictor;
 
@@ -421,7 +403,7 @@ impl<'a, W: 'a + Write + Seek, K: TiffKind> DirectoryEncoder<'a, W, K> {
     /// Returns an [`Entry`]. If the value is short enough it will *not* be written in the file but
     /// stored in the entry's offset field.
     pub fn write_entry_bytes(&mut self, ty: Type, data: &[u8]) -> TiffResult<Entry> {
-        if !data.len().is_multiple_of(usize::from(ty.byte_len())) {
+        if data.len() % usize::from(ty.byte_len()) != 0 {
             return Err(TiffError::UsageError(UsageError::MismatchedEntryLength {
                 ty,
                 found: data.len(),
@@ -488,8 +470,7 @@ impl<'a, W: 'a + Write + Seek, K: TiffKind> DirectoryEncoder<'a, W, K> {
             self.writer.write_u16(entry.field_type().to_u16())?;
             let count = K::convert_offset(entry.count())?;
             count.write(self.writer)?;
-            self.writer
-                .write_bytes(&entry.offset_raw()[..offset_bytes])?;
+            self.writer.write_bytes(&entry.offset()[..offset_bytes])?;
         }
 
         Ok(offset)
@@ -654,14 +635,11 @@ pub struct ImageEncoder<'a, W: 'a + Write + Seek, C: ColorType, K: TiffKind> {
 impl<'a, W: 'a + Write + Seek, T: ColorType, K: TiffKind> ImageEncoder<'a, W, T, K> {
     fn sanity_check(compression: Compression, predictor: Predictor) -> TiffResult<()> {
         match (predictor, compression, T::SAMPLE_FORMAT[0]) {
-            // Horizontal predictor is not valid for floating-point types
             (Predictor::Horizontal, _, SampleFormat::IEEEFP | SampleFormat::Void) => {
                 Err(TiffError::UsageError(UsageError::PredictorIncompatible))
             }
-            // Floating-point predictor is only valid for IEEEFP sample format
-            (Predictor::FloatingPoint, _, SampleFormat::IEEEFP) => Ok(()),
             (Predictor::FloatingPoint, _, _) => {
-                Err(TiffError::UsageError(UsageError::PredictorIncompatible))
+                Err(TiffError::UsageError(UsageError::PredictorUnavailable))
             }
             _ => Ok(()),
         }
@@ -795,13 +773,7 @@ impl<'a, W: 'a + Write + Seek, T: ColorType, K: TiffKind> ImageEncoder<'a, W, T,
                 }
                 self.encoder.write_data(row_result.as_slice())?
             }
-            Predictor::FloatingPoint => {
-                let mut row_result = Vec::with_capacity(std::mem::size_of_val(value));
-                for row in value.chunks_exact(self.row_samples as usize) {
-                    T::floating_point_predict(row, &mut row_result);
-                }
-                self.encoder.write_data(row_result.as_slice())?
-            }
+            _ => unimplemented!(),
         };
 
         let byte_count = self.encoder.last_written() as usize;
@@ -855,7 +827,9 @@ impl<'a, W: 'a + Write + Seek, T: ColorType, K: TiffKind> ImageEncoder<'a, W, T,
         self.encoder
             .write_tag(Tag::ResolutionUnit, unit.to_u16())
             .unwrap();
-        self.encoder.write_tag(Tag::XResolution, value).unwrap();
+        self.encoder
+            .write_tag(Tag::XResolution, value.clone())
+            .unwrap();
         self.encoder.write_tag(Tag::YResolution, value).unwrap();
     }
 

@@ -1,6 +1,6 @@
 extern crate tiff;
 
-use tiff::decoder::{Decoder, DecodingSampleBuffer};
+use tiff::decoder::{Decoder, DecodingResult};
 use tiff::tags::Tag;
 use tiff::ColorType;
 
@@ -15,9 +15,8 @@ fn test_geo_tiff() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         decoder = decoder.with_limits(tiff::decoder::Limits::unlimited());
-        decoder.next_image().expect("Cannot read image");
 
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
@@ -30,31 +29,33 @@ fn test_geo_tiff() {
                 num_samples: 5
             }
         );
-
-        let mut ifd = decoder.current_ifd();
         assert_eq!(
-            ifd.get_tag_u64(Tag::StripOffsets)
+            decoder
+                .get_tag_u64(Tag::StripOffsets)
                 .expect("Cannot get StripOffsets"),
             418
         );
         assert_eq!(
-            ifd.get_tag_u64(Tag::RowsPerStrip)
+            decoder
+                .get_tag_u64(Tag::RowsPerStrip)
                 .expect("Cannot get RowsPerStrip"),
             10
         );
         assert_eq!(
-            ifd.get_tag_u64(Tag::StripByteCounts)
+            decoder
+                .get_tag_u64(Tag::StripByteCounts)
                 .expect("Cannot get StripByteCounts"),
             1000
         );
         assert_eq!(
-            ifd.get_tag(Tag::ModelPixelScaleTag)
+            decoder
+                .get_tag(Tag::ModelPixelScaleTag)
                 .expect("Cannot get pixel scale")
                 .into_f64_vec()
                 .expect("Cannot get pixel scale"),
             vec![60.0, 60.0, 0.0]
         );
-        let DecodingSampleBuffer::I16(data) = decoder.read_image().unwrap() else {
+        let DecodingResult::I16(data) = decoder.read_image().unwrap() else {
             panic!("Cannot read band data")
         };
         assert_eq!(data.len(), 500);
@@ -65,16 +66,21 @@ fn test_geo_tiff() {
 #[test]
 fn test_webp_tiff() {
     let filenames = ["usda_naip_256_webp_z3.tif"];
-    let mut buffer = DecodingSampleBuffer::U8(vec![]);
+    let mut buffer = DecodingResult::U8(vec![]);
 
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
 
-        while decoder.more_images() {
-            decoder.next_image().unwrap();
+        loop {
             decoder.read_image_to_buffer(&mut buffer).unwrap();
+
+            if !decoder.more_images() {
+                break;
+            }
+
+            decoder.next_image().unwrap();
         }
     }
 }

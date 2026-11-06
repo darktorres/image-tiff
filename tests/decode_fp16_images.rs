@@ -1,6 +1,6 @@
 extern crate tiff;
 
-use tiff::decoder::{Decoder, DecodingSampleBuffer};
+use tiff::decoder::{Decoder, DecodingResult};
 use tiff::ColorType;
 
 use std::fs::File;
@@ -16,9 +16,7 @@ fn test_white_ieee_fp16() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
-        decoder.next_image().expect("Cannot read image");
-
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
             (256, 256)
@@ -27,8 +25,7 @@ fn test_white_ieee_fp16() {
             decoder.colortype().expect("Cannot get colortype"),
             ColorType::Gray(16)
         );
-
-        if let DecodingSampleBuffer::F16(img) = decoder.read_image().unwrap() {
+        if let DecodingResult::F16(img) = decoder.read_image().unwrap() {
             for p in img {
                 assert!(p == half::f16::from_f32_const(1.0));
             }
@@ -46,9 +43,7 @@ fn test_one_black_pixel_ieee_fp16() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
-        decoder.next_image().expect("Cannot read image");
-
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
             (256, 256)
@@ -57,8 +52,7 @@ fn test_one_black_pixel_ieee_fp16() {
             decoder.colortype().expect("Cannot get colortype"),
             ColorType::Gray(16)
         );
-
-        if let DecodingSampleBuffer::F16(img) = decoder.read_image().unwrap() {
+        if let DecodingResult::F16(img) = decoder.read_image().unwrap() {
             for (i, p) in img.iter().enumerate() {
                 if i == 0 {
                     assert!(p < &half::f16::from_f32_const(0.001));
@@ -80,9 +74,7 @@ fn test_pattern_horizontal_differencing_ieee_fp16() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
-        decoder.next_image().expect("Cannot read image");
-
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
             (256, 256)
@@ -91,8 +83,7 @@ fn test_pattern_horizontal_differencing_ieee_fp16() {
             decoder.colortype().expect("Cannot get colortype"),
             ColorType::Gray(16)
         );
-
-        if let DecodingSampleBuffer::F16(img) = decoder.read_image().unwrap() {
+        if let DecodingResult::F16(img) = decoder.read_image().unwrap() {
             // 0, 2, 5, 8, 12, 16, 255 are black
             let black = [0, 2, 5, 8, 12, 16, 255];
             for (i, p) in img.iter().enumerate() {
@@ -116,9 +107,7 @@ fn test_pattern_predictor_ieee_fp16() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
-        decoder.next_image().expect("Cannot read image");
-
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
             (256, 256)
@@ -127,8 +116,7 @@ fn test_pattern_predictor_ieee_fp16() {
             decoder.colortype().expect("Cannot get colortype"),
             ColorType::Gray(16)
         );
-
-        if let DecodingSampleBuffer::F16(img) = decoder.read_image().unwrap() {
+        if let DecodingResult::F16(img) = decoder.read_image().unwrap() {
             // 0, 2, 5, 8, 12, 16, 255 are black
             let black = [0, 2, 5, 8, 12, 16, 255];
             for (i, p) in img.iter().enumerate() {
@@ -187,9 +175,7 @@ fn test_predictor_ieee_fp16() {
     for filename in filenames.iter() {
         let path = PathBuf::from(TEST_IMAGE_DIR).join(filename);
         let img_file = File::open(path).expect("Cannot find test image!");
-        let mut decoder = Decoder::open(img_file).expect("Cannot create decoder");
-        decoder.next_image().expect("Cannot read image");
-
+        let mut decoder = Decoder::new(img_file).expect("Cannot create decoder");
         assert_eq!(
             decoder.dimensions().expect("Cannot get dimensions"),
             (16, 16)
@@ -198,8 +184,7 @@ fn test_predictor_ieee_fp16() {
             decoder.colortype().expect("Cannot get colortype"),
             ColorType::Gray(16)
         );
-
-        if let DecodingSampleBuffer::F16(img) = decoder.read_image().unwrap() {
+        if let DecodingResult::F16(img) = decoder.read_image().unwrap() {
             for (exp, found) in std::iter::zip(pnm_values.iter(), img.iter()) {
                 assert!((exp - found.to_f32()).abs() < 0.0001);
             }

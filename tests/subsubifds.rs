@@ -18,10 +18,8 @@ use std::fs::File;
 #[test]
 fn decode_seek_chain() {
     let file = File::open(TEST_IMAGE_SUBIFD).expect("Cannot open test image");
-    let mut decoder = Decoder::open(file).expect("Invalid format to create decoder");
-    assert!(decoder.ifd_pointer().is_none());
+    let mut decoder = Decoder::new(file).expect("Invalid format to create decoder");
 
-    decoder.next_image().unwrap();
     // Remember the offsets in the first iteration.
     let offset0 = decoder.ifd_pointer().expect("First IFD pointer not found");
     decoder.next_image().unwrap();

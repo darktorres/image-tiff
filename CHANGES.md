@@ -1,29 +1,3 @@
-# Version 0.12.0 (unreleased)
-
-Fixes:
-- Decoding a tiled image whose width is not a multiple of the tile width no
-  longer corrupts the columns below the right border tiles when extra samples
-  are discarded (e.g. RGB with an unspecified extra sample). The horizontal
-  tile padding was written past the end of the output row, spilling into the
-  leftmost columns of the following row.
-
-Additions:
-- Added the `TiffHeader` type. It can be used to create a `Decoder` in a state
-  before the first IFD and allows opening files at an arbitrary first IFD
-  offset rather than one indicated by an encoded header at the start.
-
-Changes:
-- The IFD iteration methods on `Decoder` (`next_image`, `seek_to_image`, etc)
-  now come with a strong error guarantee. They will not modify the current
-  directory state if they fail. This includes the failure to interpret an IFD
-  as a supported image in the case of `*_image` variants.
-
-Compatibility:
-- Changed how tiled TIFF files are detected. The presence of a TileWidth OR
-  TileHeight/TileLength tag now marks an image as tiled. Data is no retrieved
-  from either StripOffsets or TileOffsets with the latter taking precedence.
-  This is closer to the behavior of libtiff.
-
 # Version 0.11.3
 
 Additions:
